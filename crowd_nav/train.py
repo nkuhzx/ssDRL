@@ -18,6 +18,7 @@ from crowd_sim.envs.utils.robot import Robot
 
 
 def main():
+
     parser = argparse.ArgumentParser('Parse configuration file')
     parser.add_argument('--env_config', type=str, default='configs/env.config')
     parser.add_argument('--policy', type=str, default='cadrl')
