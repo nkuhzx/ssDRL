@@ -2,6 +2,8 @@
 This repository contains the codes for our [International Journal of Social Robotics paper](https://sites.google.com/view/ssdrl2020): 
 Crowd-comfort Robot Navigation among Dynamic Environment Based on social-stressed deep reinforcement learning (ssDRL)
 
+Our paper is available online Now! [Crowd-Comfort Robot Navigation Among Dynamic Environment Based on Social-Stressed Deep Reinforcement Learning](https://link.springer.com/content/pdf/10.1007/s12369-021-00838-x.pdf)
+
 ## Introduction
 Robot navigation in a dynamic environment needs to consider the comfort of the surrounding pedestrians under the premise of ensuring the safety of human, which is a challenging task. 
 This paper proposes the concept of social stress index based on tension space of robot and human, which is an important part of Human-Robot interaction. Especially, the proposed approach develops crowd-comfort navigation by combining social stress index with a deep reinforcement learning framework and the value network. 
