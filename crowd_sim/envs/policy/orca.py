@@ -128,5 +128,6 @@ class ORCA(Policy):
         self.sim.doStep()
         action = ActionXY(*self.sim.getAgentVelocity(0))
         self.last_state = state
+        self.last_human_states = state.human_states
 
         return action

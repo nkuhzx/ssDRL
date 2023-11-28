@@ -154,13 +154,13 @@ class MultiHumanRL(CADRL):
     def varied_pred_input_deal(self,human_states,unsqueeze=True):
 
         padding_num=self.deal_human_num-len(human_states)
-        padding_tensor=torch.zeros(padding_num,4) # px py vx vy hr id
+        padding_tensor=torch.zeros(padding_num,5) # px py vx vy hr 1 (mask)
 
         if len(human_states)==0:
             human_states_tensor=padding_tensor
 
         else:
-            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy]])
+            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,1]])
                                   for human_state in human_states], dim=0)
 
             human_states_tensor = torch.cat([human_states_tensor,padding_tensor],dim=0)

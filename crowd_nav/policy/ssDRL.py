@@ -43,8 +43,6 @@ class StatePredictor(nn.Module):
         """
         # bs x human_num x 5, bs x human_num x 1
         state,mask=state[:,:,:-1],state[:,:,-1]
-        mask=mask.clone()
-        mask[mask>0]=1
         size = state.shape
 
         # bs x human_num , 100
@@ -226,7 +224,7 @@ class ssDRL(MultiHumanRL):
         self.model = ValueNetwork(self.input_dim(), self.self_state_dim, mlp1_dims, mlp2_dims, mlp3_dims,
                                   attention_dims, with_global_state, self.cell_size, self.cell_num)
         emb_input_dims=config.getint('state_predictor','input_dims')
-        pred_hmlp_dims=config.getint('state_predictor','hmlp_dims')
+        pred_hmlp_dims=[int(x) for x in config.get('state_predictor', 'hmlp_dims').split(', ')]
         self.state_predictor=StatePredictor(emb_input_dims,mlp1_dims,mlp2_dims,attention_dims,pred_hmlp_dims,with_global_state)
         self.multiagent_training = config.getboolean('sarl', 'multiagent_training')
         if self.with_om:
