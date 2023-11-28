@@ -41,9 +41,18 @@ class MultiHumanRL(CADRL):
                     next_human_states, reward, done, info = self.env.onestep_lookahead(action)
 
                 else:
-                    next_human_states = [self.propagate(human_state, ActionXY(human_state.vx, human_state.vy))
-                                       for human_state in state.human_states]
-                    reward = self.compute_reward(next_self_state, next_human_states)
+                    human_states_for_pred_tensor=self.varied_pred_input_deal(state.human_states)
+                    next_human_states_tensor=self.state_predictor(human_states_for_pred_tensor)
+                    next_human_states_numpy=next_human_states_tensor.squeeze(0).data.cpu().numpy()
+
+                    # the ob only used for calculate the hr_social_stress
+                    ob_temp, reward, done, info = self.env.onestep_lookahead(action)
+
+                    next_human_states=self.transform_next_human_states(ob_temp,next_human_states_numpy)
+
+                    # next_human_states = [self.propagate(human_state, ActionXY(human_state.vx, human_state.vy))
+                    #                    for human_state in state.human_states]
+                    # reward = self.compute_reward(next_self_state, next_human_states)
 
                 rotated_batch_input=self.varied_input_deal(next_self_state,next_human_states)
 
@@ -65,6 +74,7 @@ class MultiHumanRL(CADRL):
 
         if self.phase == 'train':
             self.last_state = self.transform(state)
+            self.last_human_states = self.transform_human(state.human_states)
 
         return max_action
 
@@ -94,6 +104,29 @@ class MultiHumanRL(CADRL):
 
         return reward
 
+    def transform_next_human_states(self,ob_temp_states,pred_human_states_numpy):
+
+        next_human_states=[]
+        for i,human_state in enumerate(ob_temp_states,0) :
+
+            next_px,next_py,next_vx,next_vy=pred_human_states_numpy[i]
+
+            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,human_state.hr_social_stress)
+            next_human_states.append(next_human_state)
+
+        return next_human_states
+
+    def transform_human(self, human_state):
+
+        state_tensor=self.varied_pred_input_deal(human_state,unsqueeze=False)
+
+        if self.with_om:
+            occupancy_maps = self.build_occupancy_maps(human_state)
+            state_tensor = torch.cat([self.rotate(state_tensor), occupancy_maps], dim=1)
+
+        return state_tensor
+
+
     def transform(self, state):
         """
         Take the state passed from agent and transform it to the input of value network
@@ -116,6 +149,29 @@ class MultiHumanRL(CADRL):
 
     def input_dim(self):
         return self.joint_state_dim + (self.cell_num ** 2 * self.om_channel_size if self.with_om else 0)
+
+
+    def varied_pred_input_deal(self,human_states,unsqueeze=True):
+
+        padding_num=self.deal_human_num-len(human_states)
+        padding_tensor=torch.zeros(padding_num,4) # px py vx vy hr id
+
+        if len(human_states)==0:
+            human_states_tensor=padding_tensor
+
+        else:
+            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy]])
+                                  for human_state in human_states], dim=0)
+
+            human_states_tensor = torch.cat([human_states_tensor,padding_tensor],dim=0)
+
+        if unsqueeze:
+
+            human_states_tensor=human_states_tensor.unsqueeze(0)
+
+        human_states_tensor=human_states_tensor.to(self.device)
+
+        return human_states_tensor
 
 
     def varied_input_deal(self,self_state,human_states,unsqueeze=True):

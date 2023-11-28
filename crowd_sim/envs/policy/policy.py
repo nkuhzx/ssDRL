@@ -11,8 +11,10 @@ class Policy(object):
         self.centralized=False
         self.phase = None
         self.model = None
+        self.state_predictor=None
         self.device = None
         self.last_state = None
+        self.last_human_states= None
         self.time_step = None
         # if agent is assumed to know the dynamics of real world
         self.env = None

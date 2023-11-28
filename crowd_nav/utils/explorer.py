@@ -33,12 +33,14 @@ class Explorer(object):
             ob = self.env.reset(phase)
             done = False
             states = []
+            human_states = []
             actions = []
             rewards = []
             while not done:
                 action = self.robot.act(ob)
                 ob, reward, done, info = self.env.step(action)
                 states.append(self.robot.policy.last_state)
+                human_states.append(self.robot.policy.last_human_states)
                 actions.append(action)
                 rewards.append(reward)
 
@@ -63,7 +65,7 @@ class Explorer(object):
             if update_memory:
                 if isinstance(info, ReachGoal) or isinstance(info, Collision):
                     # only add positive(success) or negative(collision) experience in experience set
-                    self.update_memory(states, actions, rewards, imitation_learning)
+                    self.update_memory(states,human_states,actions, rewards, imitation_learning)
 
             cumulative_rewards.append(sum([pow(self.gamma, t * self.robot.time_step * self.robot.v_pref)
                                            * reward for t, reward in enumerate(rewards)]))
@@ -93,7 +95,7 @@ class Explorer(object):
             logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
             logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
 
-    def update_memory(self, states, actions, rewards, imitation_learning=False):
+    def update_memory(self, states,human_states, actions, rewards, imitation_learning=False):
         if self.memory is None or self.gamma is None:
             raise ValueError('Memory or gamma value is not set!')
 
@@ -105,11 +107,18 @@ class Explorer(object):
                 # define the value of states in IL as cumulative discounted rewards, which is the same in RL
                 state = self.target_policy.transform(state)
                 next_state = self.target_policy.transform(states[i + 1])
+
+                human_state=self.target_policy.transform_human(human_states[i])
+                next_human_state=self.target_policy.transform_human(human_states[i+1])
                 # value = pow(self.gamma, (len(states) - 1 - i) * self.robot.time_step * self.robot.v_pref)
                 value = sum([pow(self.gamma, max(t - i, 0) * self.robot.time_step * self.robot.v_pref) * reward
                              * (1 if t >= i else 0) for t, reward in enumerate(rewards)])
             else:
                 next_state = states[i + 1]
+
+                human_state=human_states[i]
+                next_human_state=human_states[i+1]
+
                 if i == len(states) - 1:
                     # terminal state
                     value = reward
@@ -130,7 +139,7 @@ class Explorer(object):
             #         padding=padding.cuda()
             #     state = torch.cat([state, padding])
 
-            self.memory.push((state, value,reward,next_state))
+            self.memory.push((state, value,reward,next_state,human_state,next_human_state))
 
 
 def average(input_list):

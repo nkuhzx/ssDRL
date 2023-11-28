@@ -127,18 +127,18 @@ def main():
         memory = ReplayMemory(capacity)
         model = policy.get_model()
         batch_size = train_config.getint('trainer', 'batch_size')
-        trainer = Trainer(model, memory, device, batch_size)
+        trainer = Trainer(model,policy.state_predictor,memory, device, batch_size,env.human_num)
         explorer = Explorer(env, robot, device, memory, policy.gamma, target_policy=policy)
 
         # imitation learning
         if args.resume:
             if not os.path.exists(rl_weight_file):
                 logging.error('RL weights does not exist')
-            model.load_state_dict(torch.load(rl_weight_file))
+            policy.load_model(rl_weight_file)
             rl_weight_file = os.path.join(args.output_dir, 'resumed_rl_model.pth')
             logging.info('Load reinforcement learning trained weights. Resume training')
         elif os.path.exists(il_weight_file):
-            model.load_state_dict(torch.load(il_weight_file))
+            policy.load_model(il_weight_file)
             logging.info('Load imitation learning trained weights.')
         else:
             il_episodes = train_config.getint('imitation_learning', 'il_episodes')
@@ -156,7 +156,7 @@ def main():
             robot.set_policy(il_policy)
             explorer.run_k_episodes(il_episodes, 'train', update_memory=True, imitation_learning=True)
             trainer.optimize_epoch(il_epochs)
-            torch.save(model.state_dict(), il_weight_file)
+            policy.save_model(il_weight_file)
             logging.info('Finish imitation learning. Weights saved.')
             logging.info('Experience set size: %d/%d', len(memory), memory.capacity)
         trainer.update_target_model(model)
@@ -196,7 +196,7 @@ def main():
                 trainer.update_target_model(model)
 
             if episode != 0 and episode % checkpoint_interval == 0:
-                torch.save(model.state_dict(), rl_weight_file)
+                policy.save_model(rl_weight_file)
 
 
     # reinforcement learning stage two
