@@ -35,9 +35,9 @@ def main():
 
     # manual setting
     args.policy='ssdrl'
-    args.env_config='configs/env1.config'
+    args.env_config='configs/env.config'
     args.gpu=True
-    args.train_stage=2
+    args.train_stage=1
 
     if args.train_stage==1:
         args.env_config = 'configs/env.config'
@@ -100,7 +100,10 @@ def main():
         env = gym.make('CrowdSim-v0')
         env.configure(env_config)
         robot = Robot(env_config, 'robot')
-        logging.info('Robot sensor: %s ,sensor range: %d' %(robot.sensor,robot.sensing_range))
+        if robot.sensing_range is None:
+            logging.info('Robot sensor: %s' %robot.sensor)
+        else:
+            logging.info('Robot sensor: %s ,sensor range: %d' % (robot.sensor, robot.sensing_range))
         env.set_robot(robot)
 
         # read training parameters
@@ -156,7 +159,7 @@ def main():
             torch.save(model.state_dict(), il_weight_file)
             logging.info('Finish imitation learning. Weights saved.')
             logging.info('Experience set size: %d/%d', len(memory), memory.capacity)
-        explorer.update_target_model(model)
+        trainer.update_target_model(model)
 
         # reinforcement learning stage one
         policy.set_env(env)
@@ -190,7 +193,7 @@ def main():
             episode += 1
 
             if episode % target_update_interval == 0:
-                explorer.update_target_model(model)
+                trainer.update_target_model(model)
 
             if episode != 0 and episode % checkpoint_interval == 0:
                 torch.save(model.state_dict(), rl_weight_file)
