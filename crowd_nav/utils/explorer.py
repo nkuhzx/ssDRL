@@ -12,7 +12,10 @@ class Explorer(object):
         self.memory = memory
         self.gamma = gamma
         self.target_policy = target_policy
+        self.target_model = None
 
+    def update_target_model(self, target_model):
+        self.target_model = copy.deepcopy(target_model)
 
     # @profile
     def run_k_episodes(self, k, phase, update_memory=False, imitation_learning=False, episode=None,
@@ -99,34 +102,42 @@ class Explorer(object):
         if self.memory is None or self.gamma is None:
             raise ValueError('Memory or gamma value is not set!')
 
-        for i, state in enumerate(states[:-1]):
+        for i, state in enumerate(states):
             reward = rewards[i]
 
             # VALUE UPDATE
             if imitation_learning:
                 # define the value of states in IL as cumulative discounted rewards, which is the same in RL
                 state = self.target_policy.transform(state)
-                next_state = self.target_policy.transform(states[i + 1])
-
-                human_state=self.target_policy.transform_human(human_states[i])
-                next_human_state=self.target_policy.transform_human(human_states[i+1])
+                human_state = self.target_policy.transform_human(human_states[i])
                 # value = pow(self.gamma, (len(states) - 1 - i) * self.robot.time_step * self.robot.v_pref)
                 value = sum([pow(self.gamma, max(t - i, 0) * self.robot.time_step * self.robot.v_pref) * reward
                              * (1 if t >= i else 0) for t, reward in enumerate(rewards)])
-            else:
-                next_state = states[i + 1]
 
+                if i== len(states)-1:
+                    next_human_state= torch.zeros_like(human_state)
+                    final_filter=0
+                else:
+                    next_human_state = self.target_policy.transform_human(human_states[i + 1])
+                    final_filter=1
+
+            else:
                 human_state=human_states[i]
-                next_human_state=human_states[i+1]
 
                 if i == len(states) - 1:
                     # terminal state
+                    next_human_state= torch.zeros_like(human_state)
+                    final_filter=0
                     value = reward
                 else:
-                    value = 0
+                    next_state = states[i + 1]
+                    next_human_state = human_states[i + 1]
+                    final_filter=1
+                    gamma_bar = pow(self.gamma, self.robot.time_step * self.robot.v_pref)
+                    value = reward + gamma_bar * self.target_model(next_state.unsqueeze(0)).data.item()
 
             value = torch.Tensor([value]).to(self.device)
-            reward = torch.Tensor([rewards[i]]).to(self.device)
+            final_filter = torch.Tensor([final_filter]).to(self.device)
             # transform state of different human_num into fixed-size tensor
             # if len(state.size()) == 1:
             #     human_num = 1
@@ -139,7 +150,7 @@ class Explorer(object):
             #         padding=padding.cuda()
             #     state = torch.cat([state, padding])
 
-            self.memory.push((state, value,reward,next_state,human_state,next_human_state))
+            self.memory.push((state, value,human_state,next_human_state,final_filter))
 
 
 def average(input_list):

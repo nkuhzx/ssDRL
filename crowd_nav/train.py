@@ -159,7 +159,7 @@ def main():
             policy.save_model(il_weight_file)
             logging.info('Finish imitation learning. Weights saved.')
             logging.info('Experience set size: %d/%d', len(memory), memory.capacity)
-        trainer.update_target_model(model)
+        explorer.update_target_model(model)
 
         # reinforcement learning stage one
         policy.set_env(env)
@@ -193,7 +193,7 @@ def main():
             episode += 1
 
             if episode % target_update_interval == 0:
-                trainer.update_target_model(model)
+                explorer.update_target_model(model)
 
             if episode != 0 and episode % checkpoint_interval == 0:
                 policy.save_model(rl_weight_file)

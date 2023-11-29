@@ -1,5 +1,7 @@
 import logging
 import copy
+
+import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
@@ -14,12 +16,12 @@ class Trainer(object):
         self.model = model
         self.state_predictor=state_predictor
         self.device = device
-        self.criterion = nn.MSELoss().to(device)
+        self.criterion=nn.MSELoss().to(device)
+        self.criterion_sp = nn.MSELoss(reduction="none").to(device)
         self.memory = memory
         self.data_loader = None
         self.batch_size = batch_size
         self.optimizer = None
-        self.target_model = None
         self.state_predictor_update_interval=human_num
 
         # for value update
@@ -33,10 +35,6 @@ class Trainer(object):
         if self.state_predictor.trainable:
             self.s_optimizer = optim.SGD(self.state_predictor.parameters(), lr=learning_rate,momentum=0.9)
 
-
-    def update_target_model(self, target_model):
-        self.target_model = copy.deepcopy(target_model)
-
     def optimize_epoch(self, num_epochs):
         if self.optimizer is None:
             raise ValueError('Learning rate is not set!')
@@ -49,7 +47,7 @@ class Trainer(object):
             epoch_s_loss = 0
             update_counter = 0
             for data in self.data_loader:
-                inputs, values,_,_,human_states_inputs,next_human_states_gt = data
+                inputs, values,human_states_inputs,next_human_states_gt,final_mask = data
                 inputs = Variable(inputs)
                 values = Variable(values)
                 inputs=inputs.to(self.device)
@@ -59,6 +57,9 @@ class Trainer(object):
                 next_human_states_gt = Variable(next_human_states_gt)
                 human_states_inputs=human_states_inputs.to(self.device)
                 next_human_states_gt=next_human_states_gt.to(self.device)
+
+                final_mask=Variable(final_mask)
+                final_mask=final_mask.to(self.device)
 
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
@@ -75,7 +76,13 @@ class Trainer(object):
                     if update_state_predictor:
                         self.s_optimizer.zero_grad()
                         next_human_states_pred=self.state_predictor(human_states_inputs)
-                        s_loss = self.criterion(next_human_states_pred, next_human_states_gt[:, :, :-1])
+                        s_loss = self.criterion_sp(next_human_states_pred, next_human_states_gt[:, :, :-1])
+                        s_loss = torch.mean(s_loss,dim=1)
+                        s_loss = torch.mul(s_loss,final_mask)
+                        if torch.sum(final_mask)==0:
+                            s_loss = torch.sum(s_loss)
+                        else:
+                            s_loss = torch.sum(s_loss)/torch.sum(final_mask)
                         s_loss.backward()
                         self.s_optimizer.step()
                         epoch_s_loss += s_loss.data.item()
@@ -94,20 +101,19 @@ class Trainer(object):
         losses = 0
         s_losses=0
         for _ in range(num_batches):
-            inputs, _,rewards,next_inputs,human_states_inputs,next_human_states_gt = next(iter(self.data_loader))
+            inputs,values,human_states_inputs,next_human_states_gt,final_mask = next(iter(self.data_loader))
 
             inputs = Variable(inputs)
-            next_inputs= Variable(next_inputs)
+            values = Variable(values)
 
             human_states_inputs = Variable(human_states_inputs)
             next_human_states_gt= Variable(next_human_states_gt)
+            final_mask=Variable(final_mask)
 
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
 
-            gamma_bar = pow(self.gamma, self.time_step * self.v_pref)
-            target_values = rewards + gamma_bar * self.target_model(next_inputs)
-            loss = self.criterion(outputs, target_values)
+            loss = self.criterion(outputs, values)
             loss.backward()
             self.optimizer.step()
             losses += loss.data.item()
@@ -118,7 +124,13 @@ class Trainer(object):
                 if update_state_predictor:
                     self.s_optimizer.zero_grad()
                     next_human_states_pred = self.state_predictor(human_states_inputs)
-                    s_loss = self.criterion(next_human_states_pred, next_human_states_gt[:, :, :-1])
+                    s_loss = self.criterion_sp(next_human_states_pred, next_human_states_gt[:, :, :-1])
+                    s_loss = torch.mean(s_loss, dim=1)
+                    s_loss = torch.mul(s_loss, final_mask)
+                    if torch.sum(final_mask) == 0:
+                        s_loss = torch.sum(s_loss)
+                    else:
+                        s_loss = torch.sum(s_loss) / torch.sum(final_mask)
                     s_loss.backward()
                     self.s_optimizer.step()
                     s_losses += s_loss.data.item()
