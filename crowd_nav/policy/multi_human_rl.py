@@ -49,8 +49,8 @@ class MultiHumanRL(CADRL):
                     next_human_states_tensor=self.state_predictor(human_states_for_pred_tensor)
                     next_human_states_numpy=next_human_states_tensor.squeeze(0).data.cpu().numpy()
 
-                    reward, _ = self.estimate_reward(state.self_state,state.human_states,self.env.global_time,action)
-                    next_human_states=self.transform_next_human_states(state.human_states,next_human_states_numpy)
+                    reward,humans_hr_social_stress, _ = self.estimate_reward(state.self_state,state.human_states,self.env.global_time,action)
+                    next_human_states=self.transform_next_human_states(state.human_states,next_human_states_numpy,humans_hr_social_stress)
 
                 rotated_batch_input=self.varied_input_deal(next_self_state,next_human_states)
 
@@ -227,17 +227,22 @@ class MultiHumanRL(CADRL):
             reward = -0.5*self.temp_robot.hr_social_stress
             done = False
 
-        return reward,done
+        hr_social_stress_dict= {}
+        for i ,human in enumerate(temp_humans):
+
+            hr_social_stress_dict[i]=human.hr_social_stress
+
+        return reward,hr_social_stress_dict,done
 
 
-    def transform_next_human_states(self,human_states,pred_human_states_numpy):
+    def transform_next_human_states(self,human_states,pred_human_states_numpy,hr_social_stress_dict):
 
         next_human_states=[]
         for i,human_state in enumerate(human_states,0):
 
-            next_px,next_py,next_vx,next_vy,next_hr_social_stress=pred_human_states_numpy[i]
+            next_px,next_py,next_vx,next_vy=pred_human_states_numpy[i]
 
-            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,next_hr_social_stress)
+            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,hr_social_stress_dict[i])
             next_human_states.append(next_human_state)
 
         return next_human_states
@@ -279,15 +284,15 @@ class MultiHumanRL(CADRL):
 
     def varied_pred_input_deal(self,human_states,unsqueeze=True):
 
-        # input px py vx vy hr_social_stress && mask (0 for padding and 1 for real person)
+        # input px py vx vy && mask (0 for padding and 1 for real person)
         padding_num=self.deal_human_num-len(human_states)
-        padding_tensor=torch.zeros(padding_num,6)
+        padding_tensor=torch.zeros(padding_num,5)
 
         if len(human_states)==0:
             human_states_tensor=padding_tensor
 
         else:
-            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,human_state.hr_social_stress,1]])
+            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,1]])
                                   for human_state in human_states], dim=0)
 
             human_states_tensor = torch.cat([human_states_tensor,padding_tensor],dim=0)
