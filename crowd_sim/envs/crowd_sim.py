@@ -57,6 +57,8 @@ class CrowdSim(gym.Env):
         self.dynamic_id_list=None
         # for visualization
         self.states = None
+        self.eye_contact_states=None
+        self.intention_states=None
         self.id_lists=None
         self.action_values = None
         self.attention_weights = None
@@ -73,6 +75,8 @@ class CrowdSim(gym.Env):
         self.rewardsum=None
         self.squezzebool=None
 
+        self.behavior_attribute=None
+
     def configure(self, config):
         self.config = config
         self.sim_type=config.get('sim','sim_type')
@@ -83,6 +87,7 @@ class CrowdSim(gym.Env):
         self.collision_penalty = config.getfloat('reward', 'collision_penalty')
         self.discomfort_dist = config.getfloat('reward', 'discomfort_dist')
         self.discomfort_penalty_factor = config.getfloat('reward', 'discomfort_penalty_factor')
+        self.behavior_attribute=config.getboolean('env','behavior_attribute')
         if self.config.get('humans', 'policy') == 'orca' and self.sim_type=='const':
             self.case_capacity = {'train': np.iinfo(np.uint32).max - 2000, 'val': 1000, 'test': 1000}
             self.case_size = {'train': np.iinfo(np.uint32).max - 2000, 'val': config.getint('env', 'val_size'),
@@ -225,7 +230,6 @@ class CrowdSim(gym.Env):
             circle_human_num=np.random.randint(0,math.ceil(human_num/2))
             for i in range(circle_human_num):
                 self.humans.append(self.generate_circle_crossing_human())
-
             square_human_num=human_num-circle_human_num
             for i in range(square_human_num):
                 self.humans.append(self.generate_square_crossing_human())
@@ -568,6 +572,12 @@ class CrowdSim(gym.Env):
         # get initial human number
         human_num=len(self.humans)
 
+        # set the behavior attribute
+        exist_waiting_id=np.random.choice(range(human_num))
+        for i,human in enumerate(self.humans,0):
+            human.sample_random_behavior_attributes(self.behavior_attribute,i==exist_waiting_id)
+
+
         # get initial squeeze situation (Matrix human_num*human_num)
         squeeze_table=np.zeros((human_num,human_num))
         for i in range(human_num):
@@ -592,6 +602,8 @@ class CrowdSim(gym.Env):
         self.global_nervous=list()
         self.squezzebool=False
         self.states = list()
+        self.eye_contact_states=list()
+        self.intent_states=list()
         self.id_lists=list()
         self.rewardsum=0
 
@@ -645,8 +657,12 @@ class CrowdSim(gym.Env):
                 ob = [other_human.get_observable_state() for other_human in self.humans if other_human != human]
                 if self.robot.visible:
                     ob += [self.robot.get_observable_state()]
-                human_actions.append(human.act(ob))
 
+                if self.behavior_attribute:
+                    human.set_intention_state(self.global_time)
+                    human.set_eye_contact_state(self.robot.get_observable_state())
+
+                human_actions.append(human.act(ob))
                 human.get_nervous_space()
 
             self.robot.get_nervous_space()
@@ -790,7 +806,8 @@ class CrowdSim(gym.Env):
                     self.rewardsum = self.rewardsum + self.get_robot_global_stress()
                     self.global_nervous.append(self.rewardsum)  # store state, action value and attention weights
                     self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
-
+                    self.eye_contact_states.append([human.eye_contact for human in self.humans])
+                    self.intent_states.append([human.intention for human in self.humans])
                     self.debugs.append([human.squeeze_area for human in self.humans])
 
 
@@ -1407,6 +1424,19 @@ class CrowdSim(gym.Env):
                     for i, human in enumerate(humans):
                         human.center = human_positions[frame_num][i]
                         human_numbers[i].set_position((human.center[0] - x_offset, human.center[1] - y_offset))
+                        if (self.eye_contact_states[frame_num][i]):
+                            human_numbers[i].set_color('green')
+                            human.set_color('green')
+                        else:
+                            human_numbers[i].set_color('black')
+                            human.set_color('black')
+
+                        if (self.intent_states[frame_num][i]==1):
+                            human.set_alpha(0.3)
+                            human.set_fill(True)
+                        else:
+                            human.set_alpha(None)
+                            human.set_fill(False)
 
                         human_ns_update(humans_ns_midfl,i,human_positions,self.human_ns_paras,human_theta,frame_num)
                         human_ns_update(humans_ns_midfr, i, human_positions, self.human_ns_paras, human_theta,

@@ -2,7 +2,10 @@ import numpy as np
 import math
 
 from matplotlib import pyplot as plt
-
+STOPPING=0
+WAITTING=1
+WAITTING_TO_WALKING=2
+WALKING=3
 
 def point_to_segment_dist(x1, y1, x2, y2, x3, y3):
     """
@@ -489,8 +492,19 @@ def hh_intersection_area(human_,human1_,shapepara):
 
     if squeeze:
 
-        human_velocity=math.sqrt(math.pow(human_.vx, 2) + math.pow(human_.vy, 2))
-        human1_velocity = math.sqrt(math.pow(human1_.vx, 2) + math.pow(human1_.vy, 2))
+        if human_.intention==WAITTING:
+            human_velocity=0.8*human_.v_pref_backup
+        elif human_.intention==WAITTING_TO_WALKING:
+            human_velocity=human_.v_pref_backup
+        else:
+            human_velocity=math.sqrt(math.pow(human_.vx, 2) + math.pow(human_.vy, 2))
+
+        if human1_.intention==WAITTING:
+            human1_velocity = 0.8*human1_.v_pref_backup
+        elif human1_.intention==WAITTING_TO_WALKING:
+            human1_velocity = human1_.v_pref_backup
+        else:
+            human1_velocity = math.sqrt(math.pow(human1_.vx, 2) + math.pow(human1_.vy, 2))
 
         hh1_dis=human_.pos.distance(human1_.pos)
         v_center=math.sqrt((pow(human_velocity,2)+pow(human1_velocity,2))/2)
