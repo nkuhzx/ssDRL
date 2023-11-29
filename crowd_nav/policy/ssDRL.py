@@ -268,15 +268,3 @@ class ssDRL(MultiHumanRL):
     def load_model(self, file):
         checkpoint = torch.load(file)
         self.load_state_dict(checkpoint)
-
-    # def predict(self, state):
-    #
-    #
-    #     def dist(human):
-    #         # sort human order by decreasing distance to the robot
-    #         return (-human.hr_social_stress, np.linalg.norm(np.array(human.position) - np.array(state.self_state.position)))
-    #         #return (np.linalg.norm(np.array(human.position) - np.array(state.self_state.position)))
-    #
-    #     state.human_states = sorted(state.human_states, key=dist, reverse=True)
-    #
-    #     return super().predict(state)

@@ -24,10 +24,6 @@ class Trainer(object):
         self.optimizer = None
         self.state_predictor_update_interval=human_num
 
-        # for value update
-        self.gamma = 0.9
-        self.time_step = 0.25
-        self.v_pref = 1
 
     def set_learning_rate(self, learning_rate):
         logging.info('Current learning rate: %f', learning_rate)

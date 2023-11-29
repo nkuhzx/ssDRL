@@ -1,10 +1,15 @@
 import torch
 import numpy as np
+import math
+
+from numpy.linalg import norm
 from crowd_sim.envs.utils.action import ActionRot, ActionXY
 from crowd_nav.policy.cadrl import CADRL
-import math
 from crowd_sim.envs.utils.state import ObservableState
+from crowd_sim.envs.utils.robot import Robot
+from crowd_sim.envs.utils.human import Human
 
+from crowd_sim.envs.utils.utils import hh_intersection_area,point_to_segment_dist,hr_intersection_area_backup
 
 class MultiHumanRL(CADRL):
     def __init__(self):
@@ -16,7 +21,6 @@ class MultiHumanRL(CADRL):
         The input to the value network is always of shape (batch_size, # humans, rotated joint state length)
 
         """
-
         if self.phase is None or self.device is None:
             raise AttributeError('Phase, device attributes have to be set!')
         if self.phase == 'train' and self.epsilon is None:
@@ -45,14 +49,8 @@ class MultiHumanRL(CADRL):
                     next_human_states_tensor=self.state_predictor(human_states_for_pred_tensor)
                     next_human_states_numpy=next_human_states_tensor.squeeze(0).data.cpu().numpy()
 
-                    # the ob only used for calculate the hr_social_stress
-                    ob_temp, reward, done, info = self.env.onestep_lookahead(action)
-
-                    next_human_states=self.transform_next_human_states(ob_temp,next_human_states_numpy)
-
-                    # next_human_states = [self.propagate(human_state, ActionXY(human_state.vx, human_state.vy))
-                    #                    for human_state in state.human_states]
-                    # reward = self.compute_reward(next_self_state, next_human_states)
+                    reward, _ = self.estimate_reward(state.self_state,state.human_states,self.env.global_time,action)
+                    next_human_states=self.transform_next_human_states(state.human_states,next_human_states_numpy)
 
                 rotated_batch_input=self.varied_input_deal(next_self_state,next_human_states)
 
@@ -78,40 +76,168 @@ class MultiHumanRL(CADRL):
 
         return max_action
 
-    def compute_reward(self, nav, humans):
+    def configure_for_estimate_reward(self):
+
+        self.time_limit = self.env.time_limit
+        self.success_reward=self.env.success_reward
+        self.collision_penalty=self.env.collision_penalty
+
+        # construct the virtual robot
+        self.robot_goal = [self.env.robot.gx, self.env.robot.gy]
+        self.temp_robot=Robot(self.env.config,'robot')
+        self.temp_robot.set(0,0,self.robot_goal[0],self.robot_goal[1],
+                       0,0,0)
+        self.temp_robot.stress_index=0
+        self.temp_robot.hr_social_stress=0
+        self.temp_robot.kinematics=self.kinematics
+
+        # construct the virtual human instance
+        self.temp_humans_max=[]
+        for i in range(self.deal_human_num):
+            temp_human=Human(self.env.config,"humans")
+            temp_human.set(0,0,0,0,0,0,0)
+            temp_human.hr_social_stress=0
+            self.temp_humans_max.append(temp_human)
+
+    def estimate_reward(self,self_state,human_states,global_time,action):
+
+        # set the state for virtual robot
+        self.temp_robot.set(self_state.px,self_state.py,self.robot_goal[0],self.robot_goal[1],
+                       self_state.vx,self_state.vy,math.atan2(self_state.vy,self_state.vx))
+        self.temp_robot.stress_index=0
+        self.temp_robot.hr_social_stress=0
+
+        # set the state for virtual humans
+        human_num=len(human_states)
+        temp_humans=self.temp_humans_max[:human_num]
+        for i,human_state in enumerate(human_states,0):
+            temp_humans[i].set(human_state.px,human_state.py,0,0,human_state.vx,human_state.vy,
+                           math.atan2(human_state.vy,human_state.vx))
+            temp_humans[i].hr_social_stress=0
+
+        # get the parameters of tension space
+        for human in temp_humans:
+            human.get_nervous_space()
+
+        self.temp_robot.get_nervous_space()
+
+        # calculate the squeeze between two person
+        squeeze_table = np.zeros((human_num, human_num))
+        squeeze_table_test = np.zeros((human_num, human_num + 1))
+
+        for i in range(human_num):
+            for j in range(i + 1, human_num):
+                squeeze_index = hh_intersection_area(temp_humans[i], temp_humans[j], 0.3)
+                squeeze_table[i, j] = squeeze_index
+                squeeze_table[j, i] = squeeze_index
+
+                squeeze_table_test[i, j] = squeeze_index
+                squeeze_table_test[j, i] = squeeze_index
+
+            squeeze_table_test[i, -1] = temp_humans[i].squeeze_area
+
         # collision detection
         dmin = float('inf')
         collision = False
-        for i, human in enumerate(humans):
-            dist = np.linalg.norm((nav.px - human.px, nav.py - human.py)) - nav.radius - human.radius
-            if dist < 0:
+        for i, human in enumerate(temp_humans):
+            px = human.px - self.temp_robot.px
+            py = human.py - self.temp_robot.py
+            if self.temp_robot.kinematics == 'holonomic':
+                vx = human.vx - action.vx
+                vy = human.vy - action.vy
+
+            else:
+                vx = human.vx - action.v * np.cos(action.r + self.temp_robot.theta)
+                vy = human.vy - action.v * np.sin(action.r + self.temp_robot.theta)
+            ex = px + vx * self.time_step
+            ey = py + vy * self.time_step
+            # closest distance between boundaries of two agents
+            closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.temp_robot.radius
+
+            collision_index = hr_intersection_area_backup(human, self.temp_robot, 2)
+
+            if closest_dist < 0 or collision_index:
                 collision = True
                 break
-            if dist < dmin:
-                dmin = dist
+            elif closest_dist < dmin:
+                dmin = closest_dist
 
-        # check if reaching the goal
+        # collision detection between humans
+        human_num = len(temp_humans)
+        for i in range(human_num):
+            for j in range(i + 1, human_num):
+                dx = temp_humans[i].px - temp_humans[j].px
+                dy = temp_humans[i].py - temp_humans[j].py
+                dist = (dx ** 2 + dy ** 2) ** (1 / 2) - temp_humans[i].radius - temp_humans[j].radius
+                if dist < 0:
+                    pass
 
-        reaching_goal = np.linalg.norm((nav.px - nav.gx, nav.py - nav.gy)) < nav.radius
-        if collision:
-            reward = -0.25
-        elif reaching_goal:
-            reward = 1
-        elif dmin < 0.2:
-            reward = (dmin - 0.2) * 0.5 * self.time_step
-        else:
+       # check if reaching the goal
+        end_position = np.array(self.temp_robot.compute_position(action, self.time_step))
+        reaching_goal = norm(end_position - np.array(self.temp_robot.get_goal_position())) < self.temp_robot.radius
+
+        last_pos = norm(np.array(self.temp_robot.get_position()) - np.array(self.temp_robot.get_goal_position()))
+        now_pos = norm(end_position - np.array(self.temp_robot.get_goal_position()))
+        distance_reward = last_pos - now_pos
+
+        # calculate_human_social_stress
+        for i, temp_human in enumerate(temp_humans):
+            temp_human.set_human_social_stress()
+
+        for i,temp_human in enumerate(temp_humans):
+            if temp_human.squeeze_area != False:
+                squeeze_index=list(np.where(squeeze_table[i]!=False)[0])
+                squeeze_num=len(squeeze_index)
+                ho_weight=[0 for num in range(squeeze_num)]
+                for j in range(squeeze_num):
+                    ho_weight[j]=temp_human.pos.distance(temp_humans[squeeze_index[j]].pos)
+                ho_weight.append(temp_human.pos.distance(self.temp_robot.pos))
+                ho_weight = np.array(ho_weight)
+                ho_weight = 1 / ho_weight
+                ho_weight=ho_weight/ho_weight.sum()
+                hr_social_stress=temp_human.stress_index*ho_weight[-1]
+            else:
+                hr_social_stress=temp_human.stress_index
+
+            temp_human.set_hr_social_stress(hr_social_stress)
+
+        hr_social_stress_list = [0 for i in range(len(temp_humans))]
+        hr_weight_list=[0 for i in range(len(temp_humans))]
+        for i, temp_human in enumerate(temp_humans):
+
+            hr_social_stress_list[i] = temp_human.hr_social_stress
+            hr_weight_list[i]=temp_human.pos.distance(self.temp_robot.pos)
+
+        hr_weight_list=np.array(hr_weight_list)
+        hr_weight_list=1/hr_weight_list
+        hr_weight_list=(hr_weight_list/hr_weight_list.sum())
+
+        self.temp_robot.set_robot_composite_stress((np.multiply(hr_weight_list,np.array(hr_social_stress_list))).sum())
+
+        if global_time >= self.time_limit - 1:
             reward = 0
+            done = True
+        elif collision:
+            reward = self.collision_penalty
+            done = True
+        elif reaching_goal:
+            reward = self.success_reward
+            done = True
+        else:
+            reward = -0.5*self.temp_robot.hr_social_stress
+            done = False
 
-        return reward
+        return reward,done
 
-    def transform_next_human_states(self,ob_temp_states,pred_human_states_numpy):
+
+    def transform_next_human_states(self,human_states,pred_human_states_numpy):
 
         next_human_states=[]
-        for i,human_state in enumerate(ob_temp_states,0) :
+        for i,human_state in enumerate(human_states,0):
 
-            next_px,next_py,next_vx,next_vy=pred_human_states_numpy[i]
+            next_px,next_py,next_vx,next_vy,next_hr_social_stress=pred_human_states_numpy[i]
 
-            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,human_state.hr_social_stress)
+            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,next_hr_social_stress)
             next_human_states.append(next_human_state)
 
         return next_human_states
@@ -153,14 +279,15 @@ class MultiHumanRL(CADRL):
 
     def varied_pred_input_deal(self,human_states,unsqueeze=True):
 
+        # input px py vx vy hr_social_stress && mask (0 for padding and 1 for real person)
         padding_num=self.deal_human_num-len(human_states)
-        padding_tensor=torch.zeros(padding_num,5) # px py vx vy hr 1 (mask)
+        padding_tensor=torch.zeros(padding_num,6)
 
         if len(human_states)==0:
             human_states_tensor=padding_tensor
 
         else:
-            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,1]])
+            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,human_state.hr_social_stress,1]])
                                   for human_state in human_states], dim=0)
 
             human_states_tensor = torch.cat([human_states_tensor,padding_tensor],dim=0)

@@ -163,16 +163,17 @@ def main():
 
         # reinforcement learning stage one
         policy.set_env(env)
+        policy.configure_for_estimate_reward()
         robot.set_policy(policy)
         robot.print_info()
         trainer.set_learning_rate(rl_learning_rate)
+
         # fill the memory pool with some RL experience
         if args.resume:
             robot.policy.set_epsilon(epsilon_end)
             explorer.run_k_episodes(100, 'train', update_memory=True, episode=0)
             logging.info('Experience set size: %d/%d', len(memory), memory.capacity)
         episode = 0
-
         while episode < train_episodes:
             if args.resume:
                 epsilon = epsilon_end
