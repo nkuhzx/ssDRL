@@ -658,10 +658,6 @@ class CrowdSim(gym.Env):
                 if self.robot.visible:
                     ob += [self.robot.get_observable_state()]
 
-                if self.behavior_attribute:
-                    human.set_intention_state(self.global_time)
-                    human.set_eye_contact_state(self.robot.get_observable_state())
-
                 human_actions.append(human.act(ob))
                 human.get_nervous_space()
 
@@ -820,6 +816,10 @@ class CrowdSim(gym.Env):
                 self.robot.step(action)
                 for i, human_action in enumerate(human_actions):
                     self.humans[i].step(human_action)
+                    if self.behavior_attribute:
+                        self.humans[i].set_intention_state(self.global_time)
+                        self.humans[i].set_eye_contact_state(self.robot.get_observable_state())
+
                 self.global_time += self.time_step
                 for i, human in enumerate(self.humans):
                     # only record the first time the human reaches the goal

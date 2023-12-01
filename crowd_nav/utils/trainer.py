@@ -72,7 +72,7 @@ class Trainer(object):
                     if update_state_predictor:
                         self.s_optimizer.zero_grad()
                         next_human_states_pred=self.state_predictor(human_states_inputs)
-                        s_loss = self.criterion_sp(next_human_states_pred, next_human_states_gt[:, :, :-1])
+                        s_loss = self.criterion_sp(next_human_states_pred[:,1:,:], next_human_states_gt[:, 1:, :-1])
                         s_loss = torch.mean(s_loss,dim=1)
                         s_loss = torch.mul(s_loss,final_mask)
                         if torch.sum(final_mask)==0:
@@ -120,7 +120,7 @@ class Trainer(object):
                 if update_state_predictor:
                     self.s_optimizer.zero_grad()
                     next_human_states_pred = self.state_predictor(human_states_inputs)
-                    s_loss = self.criterion_sp(next_human_states_pred, next_human_states_gt[:, :, :-1])
+                    s_loss = self.criterion_sp(next_human_states_pred[:,1:,:], next_human_states_gt[:, 1:, :-1])
                     s_loss = torch.mean(s_loss, dim=1)
                     s_loss = torch.mul(s_loss, final_mask)
                     if torch.sum(final_mask) == 0:

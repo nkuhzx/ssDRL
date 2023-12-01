@@ -41,7 +41,7 @@ class StatePredictor(nn.Module):
         :param state: tensor of shape (batch_size, # of humans, length of a rotated state)
         :return:
         """
-        # bs x human_num x 5, bs x human_num x 1
+        # bs x robot+human_num x 5, bs x robot+human_num x 1
         state,mask=state[:,:,:-1],state[:,:,-1]
         size = state.shape
 

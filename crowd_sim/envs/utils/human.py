@@ -70,7 +70,7 @@ class Human(Agent):
                 waiting_time_start=random.choice(range(self.waiting_time_step_parm[0])) * self.time_step
                 waiting_time_step=random.choice(range(self.waiting_time_step_parm[1],self.waiting_time_step_parm[2]))*self.time_step
                 self.waiting_time_range=[waiting_time_start,waiting_time_start+waiting_time_step,waiting_time_start+2*waiting_time_step]
-
+                print(self.waiting_time_range)
 
     def act(self, ob):
         """

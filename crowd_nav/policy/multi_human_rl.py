@@ -45,12 +45,12 @@ class MultiHumanRL(CADRL):
                     next_human_states, reward, done, info = self.env.onestep_lookahead(action)
 
                 else:
-                    human_states_for_pred_tensor=self.varied_pred_input_deal(state.human_states)
+                    human_states_for_pred_tensor=self.varied_pred_input_deal(state.self_state,state.human_states)
                     next_human_states_tensor=self.state_predictor(human_states_for_pred_tensor)
                     next_human_states_numpy=next_human_states_tensor.squeeze(0).data.cpu().numpy()
 
-                    reward,humans_hr_social_stress, _ = self.estimate_reward(state.self_state,state.human_states,self.env.global_time,action)
-                    next_human_states=self.transform_next_human_states(state.human_states,next_human_states_numpy,humans_hr_social_stress)
+                    reward,_, _ = self.estimate_reward(state.self_state,state.human_states,self.env.global_time,action)
+                    next_human_states=self.transform_next_human_states(state.human_states,next_human_states_numpy[1:])
 
                 rotated_batch_input=self.varied_input_deal(next_self_state,next_human_states)
 
@@ -72,7 +72,7 @@ class MultiHumanRL(CADRL):
 
         if self.phase == 'train':
             self.last_state = self.transform(state)
-            self.last_human_states = self.transform_human(state.human_states)
+            self.last_human_states = self.transform_human(state)
 
         return max_action
 
@@ -235,24 +235,24 @@ class MultiHumanRL(CADRL):
         return reward,hr_social_stress_dict,done
 
 
-    def transform_next_human_states(self,human_states,pred_human_states_numpy,hr_social_stress_dict):
+    def transform_next_human_states(self,human_states,pred_human_states_numpy):
 
         next_human_states=[]
         for i,human_state in enumerate(human_states,0):
 
-            next_px,next_py,next_vx,next_vy=pred_human_states_numpy[i]
+            next_px,next_py,next_vx,next_vy,next_hr_social_stress=pred_human_states_numpy[i]
 
-            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,hr_social_stress_dict[i])
+            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,next_hr_social_stress)
             next_human_states.append(next_human_state)
 
         return next_human_states
 
-    def transform_human(self, human_state):
+    def transform_human(self, state):
 
-        state_tensor=self.varied_pred_input_deal(human_state,unsqueeze=False)
+        state_tensor=self.varied_pred_input_deal(state.self_state,state.human_states,unsqueeze=False)
 
         if self.with_om:
-            occupancy_maps = self.build_occupancy_maps(human_state)
+            occupancy_maps = self.build_occupancy_maps(state.human_states)
             state_tensor = torch.cat([self.rotate(state_tensor), occupancy_maps], dim=1)
 
         return state_tensor
@@ -282,28 +282,32 @@ class MultiHumanRL(CADRL):
         return self.joint_state_dim + (self.cell_num ** 2 * self.om_channel_size if self.with_om else 0)
 
 
-    def varied_pred_input_deal(self,human_states,unsqueeze=True):
+    def varied_pred_input_deal(self,self_states,human_states,unsqueeze=True):
 
         # input px py vx vy && mask (0 for padding and 1 for real person)
         padding_num=self.deal_human_num-len(human_states)
-        padding_tensor=torch.zeros(padding_num,5)
+        padding_tensor=torch.zeros(padding_num,6)
 
         if len(human_states)==0:
             human_states_tensor=padding_tensor
 
         else:
-            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,1]])
+            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,human_state.hr_social_stress,1]])
                                   for human_state in human_states], dim=0)
 
             human_states_tensor = torch.cat([human_states_tensor,padding_tensor],dim=0)
 
+        robot_states_tensor=torch.Tensor([[self_states.px,self_states.py,self_states.vx,self_states.vy,self_states.hr_social_stress,1]])
+
+        full_states_tensor=torch.cat([robot_states_tensor,human_states_tensor],dim=0)
+
         if unsqueeze:
 
-            human_states_tensor=human_states_tensor.unsqueeze(0)
+            full_states_tensor=full_states_tensor.unsqueeze(0)
 
-        human_states_tensor=human_states_tensor.to(self.device)
+        full_states_tensor=full_states_tensor.to(self.device)
 
-        return human_states_tensor
+        return full_states_tensor
 
 
     def varied_input_deal(self,self_state,human_states,unsqueeze=True):
