@@ -292,20 +292,42 @@ class MultiHumanRL(CADRL):
 
     def varied_pred_input_deal(self,self_states,human_states,unsqueeze=True):
 
-        # input px py vx vy && mask (0 for padding and 1 for real person)
-        padding_num=self.deal_human_num-len(human_states)
-        padding_tensor=torch.zeros(padding_num,6)
+        # input px py vx vy hr_social_stress && person_id (0 for padding and >=1 for real person)
 
-        if len(human_states)==0:
-            human_states_tensor=padding_tensor
+        if len(human_states)<=self.deal_human_num:
+            padding_num = self.deal_human_num - len(human_states)
+            padding_tensor = torch.zeros(padding_num, 6)
+
+            if len(human_states)==0:
+                human_states_tensor=padding_tensor
+
+            else:
+                human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,human_state.hr_social_stress,human_state.id]])
+                                      for human_state in human_states], dim=0)
+
+                human_states_tensor = torch.cat([human_states_tensor,padding_tensor],dim=0)
 
         else:
-            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,human_state.hr_social_stress,1]])
-                                  for human_state in human_states], dim=0)
+            # only deal with the nearest (within deal_human_num)
+            distances = []
+            for human_state in human_states:
+                hr_distance = math.pow(human_state.px - self_states.px, 2) + math.pow(
+                    human_state.py - self_states.py, 2)
+                hr_distance = math.sqrt(hr_distance)
+                distances.append(hr_distance)
 
-            human_states_tensor = torch.cat([human_states_tensor,padding_tensor],dim=0)
+            sort_indexes = list(np.argsort(distances))
+            filter_indexes=sorted(sort_indexes[:self.deal_human_num])
+            human_states_ = []
+            for index in filter_indexes:
+                human_states_.append(human_states[index])
 
-        robot_states_tensor=torch.Tensor([[self_states.px,self_states.py,self_states.vx,self_states.vy,self_states.hr_social_stress,1]])
+            human_states_tensor = torch.cat([torch.Tensor([[human_state.px,human_state.py,human_state.vx,human_state.vy,human_state.hr_social_stress,human_state.id]])
+                                      for human_state in human_states_], dim=0)
+
+
+        # set the id as 0.5 for robot
+        robot_states_tensor=torch.Tensor([[self_states.px,self_states.py,self_states.vx,self_states.vy,self_states.hr_social_stress,0.5]])
 
         full_states_tensor=torch.cat([robot_states_tensor,human_states_tensor],dim=0)
 
@@ -328,7 +350,7 @@ class MultiHumanRL(CADRL):
         fake_radius=0
         fake_hr_social_stress=0
         fake_eye_contact=0
-        fake_intention=3
+        fake_intention=3 # walking
         fake_id=0
         fake_state=ObservableState(fake_px,fake_py,fake_vx,fake_vy,fake_radius,fake_hr_social_stress,
                                    fake_eye_contact,fake_intention,fake_id)
@@ -365,19 +387,19 @@ class MultiHumanRL(CADRL):
 
                 batch_states = torch.cat([batch_states, padding], dim=0)
 
-                states_attribute = torch.cat([torch.ones((len(human_states))), torch.zeros((len(fake_states)))],dim=0)\
+                states_attribute = torch.cat([torch.tensor([human_state.id for human_state in human_states]), torch.zeros((len(fake_states)))],dim=0)\
                     .unsqueeze(1).to(self.device)
 
             else:
-
-                states_attribute = torch.ones((self.deal_human_num)).unsqueeze(1).to(self.device)
+                # id from 1-5 fixed
+                states_attribute = torch.tensor([human_state.id for human_state in human_states]).unsqueeze(1).to(self.device)
 
             rotated_batch_input = self.rotate(batch_states)
-
+            states_attribute=states_attribute.float()
             rotated_batch_input=torch.cat([rotated_batch_input,states_attribute],dim=1)
 
 
-        # Deal with human num<5, drop human state with distance
+        # Deal with human num>5, drop human state with distance
         elif len(human_states) > self.deal_human_num:
             distances = []
             for human_state in human_states:
@@ -386,11 +408,12 @@ class MultiHumanRL(CADRL):
                 hr_distance = math.sqrt(hr_distance)
                 distances.append(hr_distance)
 
-            sort_indexs = list(np.argsort(distances))
+            sort_indexes = list(np.argsort(distances))
+            filter_indexes=sorted(sort_indexes[:self.deal_human_num])
             human_states_ = []
-            for index in sort_indexs:
-                if (index < self.deal_human_num):
-                    human_states_.append(human_states[index])
+            for index in filter_indexes:
+                human_states_.append(human_states[index])
+
 
             human_states = human_states_
 
@@ -399,7 +422,7 @@ class MultiHumanRL(CADRL):
 
             rotated_batch_input = self.rotate(batch_states)
 
-            states_attribute=torch.ones((self.deal_human_num)).unsqueeze(1).to(self.device)
+            states_attribute=torch.tensor([human_state.id for human_state in human_states]).unsqueeze(1).to(self.device)
 
             rotated_batch_input=torch.cat([rotated_batch_input,states_attribute],dim=1)
 

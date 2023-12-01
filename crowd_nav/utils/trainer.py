@@ -72,16 +72,43 @@ class Trainer(object):
                     if update_state_predictor:
                         self.s_optimizer.zero_grad()
                         next_human_states_pred=self.state_predictor(human_states_inputs)
-                        s_loss = self.criterion_sp(next_human_states_pred[:,1:,:], next_human_states_gt[:, 1:, :-1])
-                        s_loss = torch.mean(s_loss,dim=1)
-                        s_loss = torch.mul(s_loss,final_mask)
-                        if torch.sum(final_mask)==0:
-                            s_loss = torch.sum(s_loss)
+                        pred_human_ids,gt_human_ids=human_states_inputs[:,1:,-1],next_human_states_gt[:,1:,-1]
+
+
+                        if torch.eq(pred_human_ids,gt_human_ids).all():
+                            # for stage one Full observation
+                            s_loss = self.criterion_sp(next_human_states_pred[:,1:,:], next_human_states_gt[:, 1:, :-1])
+                            s_loss = torch.mean(s_loss,dim=1)
+                            s_loss = torch.mul(s_loss,final_mask)
+                            if torch.sum(final_mask)==0:
+                                s_loss = torch.sum(s_loss)
+                            else:
+                                s_loss = torch.sum(s_loss)/torch.sum(final_mask)
+                            s_loss.backward()
+                            self.s_optimizer.step()
+                            epoch_s_loss += s_loss.data.item()
                         else:
-                            s_loss = torch.sum(s_loss)/torch.sum(final_mask)
-                        s_loss.backward()
-                        self.s_optimizer.step()
-                        epoch_s_loss += s_loss.data.item()
+                            # for stage two partial observation
+                            gt_filter_state_list=[]
+                            pred_filter_state_list=[]
+                            bs_index=0
+                            for gt_id,pred_id,gt_state,pred_state in zip(gt_human_ids,pred_human_ids,next_human_states_pred[:,1:,:], next_human_states_gt[:, 1:, :-1]):
+                                if final_mask[bs_index]==0: continue
+                                gt_ind, pred_ind = torch.where(torch.eq(gt_id[:, None], pred_id))
+                                gt_filter_state_list.append(gt_state[gt_ind])
+                                pred_filter_state_list.append(pred_state[pred_ind])
+                                bs_index+=1
+                            if len(gt_filter_state_list)!=0:
+                                gt_filter_state=torch.cat(gt_filter_state_list,dim=0)
+                                pred_filter_state=torch.cat(pred_filter_state_list,dim=0)
+
+                                if gt_filter_state.shape[0]!=0:
+                                    s_loss = self.criterion_sp(gt_filter_state,pred_filter_state)
+                                    s_loss = torch.mean(s_loss, dim=1)
+                                    s_loss = torch.sum(s_loss)/gt_filter_state.shape[0]
+                                    s_loss.backward()
+                                    self.s_optimizer.step()
+                                    epoch_s_loss += s_loss.data.item()
 
             average_epoch_loss = epoch_loss / len(self.memory)
             average_epoch_s_loss = epoch_s_loss/ len(self.memory)
@@ -120,16 +147,44 @@ class Trainer(object):
                 if update_state_predictor:
                     self.s_optimizer.zero_grad()
                     next_human_states_pred = self.state_predictor(human_states_inputs)
-                    s_loss = self.criterion_sp(next_human_states_pred[:,1:,:], next_human_states_gt[:, 1:, :-1])
-                    s_loss = torch.mean(s_loss, dim=1)
-                    s_loss = torch.mul(s_loss, final_mask)
-                    if torch.sum(final_mask) == 0:
-                        s_loss = torch.sum(s_loss)
+                    pred_human_ids, gt_human_ids = human_states_inputs[:, 1:, -1], next_human_states_gt[:, 1:, -1]
+
+                    if torch.eq(pred_human_ids, gt_human_ids).all():
+                        # for stage one Full observation
+                        s_loss = self.criterion_sp(next_human_states_pred[:, 1:, :], next_human_states_gt[:, 1:, :-1])
+                        s_loss = torch.mean(s_loss, dim=1)
+                        s_loss = torch.mul(s_loss, final_mask)
+                        if torch.sum(final_mask) == 0:
+                            s_loss = torch.sum(s_loss)
+                        else:
+                            s_loss = torch.sum(s_loss) / torch.sum(final_mask)
+                        s_loss.backward()
+                        self.s_optimizer.step()
+                        s_losses += s_loss.data.item()
                     else:
-                        s_loss = torch.sum(s_loss) / torch.sum(final_mask)
-                    s_loss.backward()
-                    self.s_optimizer.step()
-                    s_losses += s_loss.data.item()
+                        # for stage two partial observation
+                        gt_filter_state_list = []
+                        pred_filter_state_list = []
+                        bs_index = 0
+                        for gt_id, pred_id, gt_state, pred_state in zip(gt_human_ids, pred_human_ids,
+                                                                        next_human_states_pred[:, 1:, :],
+                                                                        next_human_states_gt[:, 1:, :-1]):
+                            if final_mask[bs_index] == 0: continue
+                            gt_ind, pred_ind = torch.where(torch.eq(gt_id[:, None], pred_id))
+                            gt_filter_state_list.append(gt_state[gt_ind])
+                            pred_filter_state_list.append(pred_state[pred_ind])
+                            bs_index += 1
+                        if len(gt_filter_state_list) != 0:
+                            gt_filter_state = torch.cat(gt_filter_state_list, dim=0)
+                            pred_filter_state = torch.cat(pred_filter_state_list, dim=0)
+
+                            if gt_filter_state.shape[0] != 0:
+                                s_loss = self.criterion_sp(gt_filter_state, pred_filter_state)
+                                s_loss = torch.mean(s_loss, dim=1)
+                                s_loss = torch.sum(s_loss) / gt_filter_state.shape[0]
+                                s_loss.backward()
+                                self.s_optimizer.step()
+                                s_losses += s_loss.data.item()
 
 
         average_loss = losses / num_batches

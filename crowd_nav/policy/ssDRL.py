@@ -43,6 +43,8 @@ class StatePredictor(nn.Module):
         """
         # bs x robot+human_num x 5, bs x robot+human_num x 1
         state,mask=state[:,:,:-1],state[:,:,-1]
+        mask=mask.clone()
+        mask[mask>0]=1
         size = state.shape
 
         # bs x human_num , 100
@@ -136,6 +138,8 @@ class ValueNetwork(nn.Module):
         :return:
         """
         state,mask=state[:,:,:self.input_dim],state[:,:,self.input_dim]
+        mask=mask.clone()
+        mask[mask>0]=1
         size = state.shape
         #print(state)
 
