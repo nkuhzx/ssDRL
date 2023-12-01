@@ -97,6 +97,10 @@ class MultiHumanRL(CADRL):
             temp_human=Human(self.env.config,"humans")
             temp_human.set(0,0,0,0,0,0,0)
             temp_human.hr_social_stress=0
+            temp_human.eye_contact=0
+            temp_human.intention=3
+            temp_human.set_id(0)
+            temp_human.v_pref_backup=temp_human.v_pref
             self.temp_humans_max.append(temp_human)
 
     def estimate_reward(self,self_state,human_states,global_time,action):
@@ -114,6 +118,9 @@ class MultiHumanRL(CADRL):
             temp_humans[i].set(human_state.px,human_state.py,0,0,human_state.vx,human_state.vy,
                            math.atan2(human_state.vy,human_state.vx))
             temp_humans[i].hr_social_stress=0
+            temp_humans[i].eye_contact=human_state.eye_contact
+            temp_humans[i].intention=human_state.intention
+            temp_humans[i].set_id(human_state.id)
 
         # get the parameters of tension space
         for human in temp_humans:
@@ -242,7 +249,8 @@ class MultiHumanRL(CADRL):
 
             next_px,next_py,next_vx,next_vy,next_hr_social_stress=pred_human_states_numpy[i]
 
-            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,next_hr_social_stress)
+            next_human_state=ObservableState(next_px,next_py,next_vx,next_vy,human_state.radius,next_hr_social_stress,
+                                             human_state.eye_contact,human_state.intention,human_state.id)
             next_human_states.append(next_human_state)
 
         return next_human_states
@@ -319,7 +327,11 @@ class MultiHumanRL(CADRL):
         fake_vx,fake_vy=0,0
         fake_radius=0
         fake_hr_social_stress=0
-        fake_state=ObservableState(fake_px,fake_py,fake_vx,fake_vy,fake_radius,fake_hr_social_stress)
+        fake_eye_contact=0
+        fake_intention=3
+        fake_id=0
+        fake_state=ObservableState(fake_px,fake_py,fake_vx,fake_vy,fake_radius,fake_hr_social_stress,
+                                   fake_eye_contact,fake_intention,fake_id)
 
 
         if len(human_states) == 0:

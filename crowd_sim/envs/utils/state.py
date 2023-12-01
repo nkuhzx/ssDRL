@@ -30,7 +30,7 @@ class FullState(object):
 
 
 class ObservableState(object):
-    def __init__(self, px, py, vx, vy, radius,hr_social_stress=None):
+    def __init__(self, px, py, vx, vy, radius,hr_social_stress=None,eye_contact=None,intention=None,id=None):
         self.px = px
         self.py = py
         self.vx = vx
@@ -42,6 +42,9 @@ class ObservableState(object):
 
         self.hr_social_stress=hr_social_stress
 
+        self.eye_contact=eye_contact
+        self.intention=intention
+        self.id=id
 
     def __add__(self, other):
 
@@ -51,7 +54,7 @@ class ObservableState(object):
 
         else:
 
-            return other + (self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress)
+            return other + (self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress,self.eye_contact,self.intention,self.id)
 
     def __str__(self):
 
@@ -61,7 +64,7 @@ class ObservableState(object):
 
         else:
 
-            return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress]])
+            return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress,self.eye_contact,self.intention,self.id]])
 
     def to_list(self):
 
@@ -71,7 +74,7 @@ class ObservableState(object):
 
         else:
 
-            return (self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress)
+            return (self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress,self.eye_contact,self.intention,self.id)
 
 
 class JointState(object):

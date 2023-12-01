@@ -49,6 +49,10 @@ class Human(Agent):
         self.waiting_time_range=None
         self.waiting_to_walk_count=None
         self.intention=None
+        self.id=None
+
+    def set_id(self,id):
+        self.id=id
 
     def sample_random_behavior_attributes(self,behavior_attributes=False,exist_waiting=False):
 
@@ -70,7 +74,6 @@ class Human(Agent):
                 waiting_time_start=random.choice(range(self.waiting_time_step_parm[0])) * self.time_step
                 waiting_time_step=random.choice(range(self.waiting_time_step_parm[1],self.waiting_time_step_parm[2]))*self.time_step
                 self.waiting_time_range=[waiting_time_start,waiting_time_start+waiting_time_step,waiting_time_start+2*waiting_time_step]
-                print(self.waiting_time_range)
 
     def act(self, ob):
         """
@@ -257,7 +260,7 @@ class Human(Agent):
 
     def get_observable_state(self):
 
-        return ObservableState(self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress)
+        return ObservableState(self.px, self.py, self.vx, self.vy, self.radius,self.hr_social_stress,self.eye_contact,self.intention,self.id)
 
     def get_next_observable_state(self, action):
 
@@ -281,5 +284,5 @@ class Human(Agent):
                 next_theta = self.theta + action.r
                 next_vx = action.v * np.cos(next_theta)
                 next_vy = action.v * np.sin(next_theta)
-        return ObservableState(next_px, next_py, next_vx, next_vy, self.radius,self.hr_social_stress)
+        return ObservableState(next_px, next_py, next_vx, next_vy, self.radius,self.hr_social_stress,self.eye_contact,self.intention,self.id)
 

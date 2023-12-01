@@ -572,11 +572,11 @@ class CrowdSim(gym.Env):
         # get initial human number
         human_num=len(self.humans)
 
-        # set the behavior attribute
+        # set the behavior attribute and the id
         exist_waiting_id=np.random.choice(range(human_num))
         for i,human in enumerate(self.humans,0):
             human.sample_random_behavior_attributes(self.behavior_attribute,i==exist_waiting_id)
-
+            human.set_id(i+1)
 
         # get initial squeeze situation (Matrix human_num*human_num)
         squeeze_table=np.zeros((human_num,human_num))
@@ -842,6 +842,12 @@ class CrowdSim(gym.Env):
                     raise NotImplementedError
             else:
                 self.get_all_hr_social_stress()
+
+                for i, human_action in enumerate(human_actions):
+                    if self.behavior_attribute:
+                        self.humans[i].set_intention_state(self.global_time)
+                        self.humans[i].set_eye_contact_state(self.robot.get_observable_state())
+
                 if self.robot.sensor == 'coordinates':
                     ob = [human.get_next_observable_state(action) for human, action in zip(self.humans, human_actions)]
 

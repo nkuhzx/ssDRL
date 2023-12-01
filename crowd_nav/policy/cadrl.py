@@ -108,7 +108,8 @@ class CADRL(Policy):
             # propagate state of humans
             next_px = state.px + action.vx * self.time_step
             next_py = state.py + action.vy * self.time_step
-            next_state = ObservableState(next_px, next_py, action.vx, action.vy, state.radius,state.hr_social_stress)
+            next_state = ObservableState(next_px, next_py, action.vx, action.vy, state.radius,state.hr_social_stress,
+                                         state.eye_contact,state.intention,state.id)
         elif isinstance(state, FullState):
             # propagate state of current agent
             # perform action without rotation
@@ -124,7 +125,7 @@ class CADRL(Policy):
                 next_px = state.px + next_vx * self.time_step
                 next_py = state.py + next_vy * self.time_step
                 next_state = FullState(next_px, next_py, next_vx, next_vy, state.radius, state.gx, state.gy,
-                                       state.v_pref, next_theta)
+                                       state.v_pref, next_theta,state.hr_social_stress)
         else:
             raise ValueError('Type error')
 
